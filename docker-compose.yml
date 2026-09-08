@@ -1,0 +1,74 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: profile-ai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-profile_ai}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-profile_ai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - profile-ai
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${DOCKER_TARGET:-development}
+    container_name: profile-ai-app
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/profile_ai?schema=public}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      API_SECRET_KEY: ${API_SECRET_KEY:-change-me-to-a-long-random-secret}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./prisma:/usr/src/app/prisma
+      - ./prompts:/usr/src/app/prompts
+      - ./package.json:/usr/src/app/package.json
+      - ./tsconfig.json:/usr/src/app/tsconfig.json
+      - app_node_modules:/usr/src/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - profile-ai
+
+volumes:
+  postgres_data:
+  app_node_modules:
+
+networks:
+  profile-ai:
+    driver: bridge

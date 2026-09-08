@@ -1,0 +1,74 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  name      String
+  bio       String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("profiles")
+}
+
+model Message {
+  id              String           @id @default(uuid())
+  userPrompt      String           @map("user_prompt")
+  aiResponse      String           @map("ai_response")
+  ipAddress       String?          @map("ip_address")
+  userAgent       String?          @map("user_agent")
+  responseTimeMs  Int?             @map("response_time_ms")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  learningReview  LearningReview?
+
+  @@map("messages")
+}
+
+model LearningReview {
+  id               String         @id @default(uuid())
+  messageId        String?        @unique @map("message_id")
+  userPrompt       String         @map("user_prompt")
+  normalizedPrompt String         @map("normalized_prompt")
+  aiResponse       String         @map("ai_response")
+  reason           String
+  status           String         @default("pending")
+  occurrenceCount  Int            @default(1) @map("occurrence_count")
+  note             String?
+  factId           String?        @map("fact_id")
+  reviewedAt       DateTime?      @map("reviewed_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  message          Message?       @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  fact             KnowledgeFact? @relation(fields: [factId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([normalizedPrompt, status])
+  @@map("learning_reviews")
+}
+
+model KnowledgeFact {
+  id        String           @id @default(uuid())
+  content   String
+  active    Boolean          @default(true)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  reviews   LearningReview[]
+
+  @@map("knowledge_facts")
+}
+
+model SystemLog {
+  id        String   @id @default(uuid())
+  level     String
+  message   String
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("system_logs")
+}
