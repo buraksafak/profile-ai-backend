@@ -14,7 +14,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   RESEND_API_KEY: z.string().default(''),
   CONTACT_TO_EMAIL: z.string().email().default('buraksafak2109@gmail.com'),
-  CONTACT_FROM_EMAIL: z.string().min(3).default('Profile AI <beth.t@example.com>'),
+  CONTACT_FROM_EMAIL: z.string().min(3).default('Burak Safak <contact@buraksafak.online>'),
 });
 
 const parsed = envSchema.safeParse(process.env);
