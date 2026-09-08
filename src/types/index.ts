@@ -21,6 +21,12 @@ export type {
   UpdateFactInput,
 } from './learning';
 export type { ChatRequestBody, ChatResponseDto } from './chat';
+export type {
+  ContactHandleInput,
+  ContactHandleResult,
+  CreateContactMessageInput,
+  SendContactEmailInput,
+} from './contact';
 
 export {
   AppError,

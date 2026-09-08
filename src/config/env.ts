@@ -12,6 +12,9 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   API_SECRET_KEY: z.string().min(1, 'API_SECRET_KEY is required'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  RESEND_API_KEY: z.string().default(''),
+  CONTACT_TO_EMAIL: z.string().email().default('buraksafak2109@gmail.com'),
+  CONTACT_FROM_EMAIL: z.string().min(3).default('Profile AI <beth.t@example.com>'),
 });
 
 const parsed = envSchema.safeParse(process.env);

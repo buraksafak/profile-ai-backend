@@ -130,6 +130,12 @@ export const swaggerSpec: JsonObject = {
             maxLength: 1000,
             example: 'Tell me about this profile',
           },
+          sessionId: {
+            type: 'string',
+            minLength: 8,
+            maxLength: 80,
+            description: 'Optional client session id. Keeps the contact flow on the same visitor.',
+          },
         },
       },
       ChatResponse: {
@@ -427,7 +433,7 @@ export const swaggerSpec: JsonObject = {
     '/api/chat': {
       post: {
         tags: ['Chat'],
-        summary: 'Send a chat message',
+        summary: 'Send a chat message. Contact intent starts a guided name / email / title / topic flow.',
         requestBody: {
           required: true,
           content: {

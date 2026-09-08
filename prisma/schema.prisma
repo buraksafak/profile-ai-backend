@@ -72,3 +72,18 @@ model SystemLog {
 
   @@map("system_logs")
 }
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  subject   String
+  body      String
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  emailSent Boolean  @default(false) @map("email_sent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("contact_messages")
+}

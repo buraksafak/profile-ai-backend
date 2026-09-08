@@ -1,6 +1,6 @@
 # Ubuntu VPS production stack.
-# Build on the server: ./scripts/vps-deploy.sh
-# Optional reverse proxy: ./scripts/vps-deploy.sh --proxy
+# App joins existing edge proxy via external `shared-network`.
+# Do not publish host ports and do not use --proxy when global_nginx owns :80.
 services:
   db:
     image: postgres:16-alpine
@@ -52,8 +52,9 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
       API_SECRET_KEY: ${API_SECRET_KEY:?API_SECRET_KEY is required}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-    ports:
-      - "${APP_BIND:-0.0.0.0}:${PORT:-3000}:3000"
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-buraksafak2109@gmail.com}
+      CONTACT_FROM_EMAIL: "${CONTACT_FROM_EMAIL:-Profile AI <beth.t@example.com>}"
     healthcheck:
       test:
         [
@@ -76,6 +77,7 @@ services:
         max-file: "5"
     networks:
       - profile-ai
+      - shared-network
     security_opt:
       - no-new-privileges:true
     mem_limit: 512m
@@ -117,3 +119,5 @@ volumes:
 networks:
   profile-ai:
     driver: bridge
+  shared-network:
+    external: true

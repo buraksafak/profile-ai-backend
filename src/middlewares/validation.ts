@@ -8,6 +8,7 @@ export const chatMessageSchema = z.object({
     .trim()
     .min(2, 'message must be at least 2 characters')
     .max(1000, 'message must be at most 1000 characters'),
+  sessionId: z.string().trim().min(8).max(80).optional(),
 });
 
 export type ChatMessageBody = z.infer<typeof chatMessageSchema>;

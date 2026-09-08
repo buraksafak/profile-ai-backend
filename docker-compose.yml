@@ -49,6 +49,9 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       API_SECRET_KEY: ${API_SECRET_KEY:-change-me-to-a-long-random-secret}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      CONTACT_TO_EMAIL: ${CONTACT_TO_EMAIL:-buraksafak2109@gmail.com}
+      CONTACT_FROM_EMAIL: "${CONTACT_FROM_EMAIL:-Profile AI <beth.t@example.com>}"
       CHOKIDAR_USEPOLLING: "true"
     ports:
       - "${APP_BIND:-0.0.0.0}:${PORT:-3000}:3000"

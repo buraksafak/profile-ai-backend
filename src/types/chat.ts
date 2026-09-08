@@ -1,5 +1,6 @@
 export interface ChatRequestBody {
   message: string;
+  sessionId?: string;
 }
 
 export interface ChatResponseDto {

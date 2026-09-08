@@ -1,5 +1,6 @@
 import { learningRepository } from '../repositories/learning.repository';
 import { logger } from '../utils/logger';
+import { looksLikePromptTampering, neutralizeDelimiters } from '../utils/prompt-guard';
 import { looksLikeUnknownReply, normalizePrompt } from '../utils/unknown-reply';
 import { NotFoundError, ValidationError } from '../types/errors';
 import type {
@@ -33,6 +34,10 @@ export class KnowledgeService {
 
   async captureUnknownReply(input: CaptureUnknownReplyInput): Promise<void> {
     if (!looksLikeUnknownReply(input.aiResponse)) {
+      return;
+    }
+
+    if (looksLikePromptTampering(input.userPrompt)) {
       return;
     }
 
@@ -84,7 +89,8 @@ export class KnowledgeService {
       throw new ValidationError('Review is no longer pending');
     }
 
-    const result = await learningRepository.approveReviewWithFact(id, input.content.trim());
+    const content = this.requireSafeFactContent(input.content);
+    const result = await learningRepository.approveReviewWithFact(id, content);
     this.invalidateFactCache();
     return result;
   }
@@ -103,7 +109,7 @@ export class KnowledgeService {
   }
 
   async createFact(input: CreateFactInput) {
-    const fact = await learningRepository.createFact(input.content.trim());
+    const fact = await learningRepository.createFact(this.requireSafeFactContent(input.content));
     this.invalidateFactCache();
     return fact;
   }
@@ -115,11 +121,22 @@ export class KnowledgeService {
     }
 
     const updated = await learningRepository.updateFact(id, {
-      ...(input.content !== undefined ? { content: input.content.trim() } : {}),
+      ...(input.content !== undefined
+        ? { content: this.requireSafeFactContent(input.content) }
+        : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
     });
     this.invalidateFactCache();
     return updated;
+  }
+
+  private requireSafeFactContent(content: string): string {
+    const sanitized = neutralizeDelimiters(content).trim();
+    if (!sanitized || looksLikePromptTampering(sanitized)) {
+      throw new ValidationError('Fact content cannot include prompt, file, or instruction changes');
+    }
+
+    return sanitized;
   }
 }
 

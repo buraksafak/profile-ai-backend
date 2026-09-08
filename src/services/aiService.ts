@@ -3,6 +3,7 @@ import { createGenerateConfig, GEMINI_MODEL } from '../config/gemini';
 import { env } from '../config/env';
 import { buildSystemPrompt } from '../config/prompt';
 import { logger } from '../utils/logger';
+import { wrapVisitorMessage } from '../utils/prompt-guard';
 import { stripMarkdownEmphasis } from '../utils/text';
 import { knowledgeService } from './knowledge.service';
 import { AppError, ExternalServiceError } from '../types/errors';
@@ -75,7 +76,7 @@ export class AiService {
     try {
       const response = await this.client.models.generateContent({
         model: this.model,
-        contents: userPrompt,
+        contents: wrapVisitorMessage(userPrompt),
         config: createGenerateConfig({
           systemInstruction: buildSystemPrompt(approvedFacts),
         }),

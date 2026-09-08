@@ -36,7 +36,7 @@ export const corsMiddleware: RequestHandler = cors({
 
 export const chatRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 25,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: {
