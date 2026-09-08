@@ -15,7 +15,13 @@
     "prisma:push": "npx prisma db push",
     "prisma:studio": "prisma studio --browser none",
     "docker:prisma:push": "docker compose exec app npx prisma db push",
-    "docker:prisma:migrate:dev": "docker compose exec app npx prisma migrate dev"
+    "docker:prisma:migrate:dev": "docker compose exec app npx prisma migrate dev",
+    "docker:dev": "docker compose up --build",
+    "docker:dev:down": "docker compose down",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build",
+    "docker:prod:proxy": "docker compose -f docker-compose.prod.yml --profile proxy up -d --build",
+    "docker:prod:down": "docker compose -f docker-compose.prod.yml --profile proxy down",
+    "docker:prod:logs": "docker compose -f docker-compose.prod.yml logs -f --tail=200"
   },
   "engines": {
     "node": ">=22.0.0"

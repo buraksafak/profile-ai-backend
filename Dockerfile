@@ -1,52 +1,64 @@
 # syntax=docker/dockerfile:1
 
-ARG NODE_VERSION=22-alpine
+ARG NODE_VERSION=22-bookworm-slim
 
 FROM node:${NODE_VERSION} AS base
 WORKDIR /usr/src/app
 
-RUN apk add --no-cache openssl libc6-compat
+ENV TZ=Europe/Istanbul \
+    npm_config_update_notifier=false \
+    npm_config_fund=false \
+    npm_config_audit=false
 
-COPY package.json package-lock.json* ./
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates tzdata \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
 RUN chmod +x ./scripts/entrypoint.sh
 
-FROM base AS development
+FROM base AS deps
 ENV NODE_ENV=development
-RUN npm install
+RUN npm ci
+
+FROM deps AS development
+ENV NODE_ENV=development
 COPY . .
+RUN chmod +x ./scripts/entrypoint.sh
 EXPOSE 3000
 ENTRYPOINT ["./scripts/entrypoint.sh"]
 CMD ["npm", "run", "dev"]
 
-FROM base AS deps
-RUN npm install
-
 FROM deps AS build
 ENV NODE_ENV=production
-COPY . .
+COPY tsconfig.json ./
+COPY src ./src
+COPY prompts ./prompts
 RUN npx prisma generate && npm run build
 
-FROM node:${NODE_VERSION} AS production
-ENV NODE_ENV=production
-WORKDIR /usr/src/app
+FROM base AS production
+ENV NODE_ENV=production \
+    TZ=Europe/Istanbul \
+    HOME=/usr/src/app
 
-RUN apk add --no-cache openssl libc6-compat \
-  && addgroup -S app && adduser -S app -G app
+RUN groupadd --system app \
+  && useradd --system --gid app --home-dir /usr/src/app --no-create-home app
 
-COPY package.json package-lock.json* ./
-COPY prisma ./prisma
 COPY prompts ./prompts
-COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
-RUN chmod +x ./scripts/entrypoint.sh \
-  && npm install --omit=dev \
+RUN npm ci --omit=dev \
   && npx prisma generate \
+  && mkdir -p /usr/src/app/logs \
   && chown -R app:app /usr/src/app
 
 COPY --from=build --chown=app:app /usr/src/app/dist ./dist
 
 USER app
 EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=8 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/v1/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
 ENTRYPOINT ["./scripts/entrypoint.sh"]
 CMD ["node", "dist/server.js"]

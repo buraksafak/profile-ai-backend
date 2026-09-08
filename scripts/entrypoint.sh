@@ -1,17 +1,18 @@
 #!/bin/sh
-set -e
+set -eu
 
 PRISMA="./node_modules/.bin/prisma"
 
 if [ ! -x "$PRISMA" ]; then
-  PRISMA="npx prisma"
+  echo "[entrypoint] Prisma CLI not found at $PRISMA" >&2
+  exit 1
 fi
 
 echo "[entrypoint] generating Prisma client..."
-$PRISMA generate
+"$PRISMA" generate
 
 echo "[entrypoint] applying database migrations..."
-$PRISMA migrate deploy
+"$PRISMA" migrate deploy
 
 echo "[entrypoint] starting application: $*"
 exec "$@"
