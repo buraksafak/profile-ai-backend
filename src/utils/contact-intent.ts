@@ -1,56 +1,70 @@
 import type { ContactLocale } from '../types/contact';
 
+function normalizeForIntent(text: string): string {
+  return text
+    .toLocaleLowerCase('tr-TR')
+    .replace(/['’`]/g, '')
+    .replace(/[.,!?;:()[\]{}]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const ASK_ADDRESS_ONLY: RegExp[] = [
-  /e-?posta(n|sı|si|nız)?(\s+adresi?)?\s*(ne|nedir)/i,
-  /mail(in)?(\s+adresi?)?\s*(ne|nedir)/i,
-  /\bemail address\b/i,
-  /what(?:'s| is) (?:his |burak'?s )?(?:e-?mail|mail)/i,
-  /\blinkedin\b/i,
-  /\binstagram\b/i,
-  /\bgithub\b/i,
+  /e-?posta(n|sı|si|nız)?(\s+adresi?)?\s*(ne|nedir)\b/,
+  /mail(in)?(\s+adresi?)?\s*(ne|nedir)\b/,
+  /\bemail address\b/,
+  /what(?:'s| is) (?:his |burak'?s )?(?:e-?mail|mail)/,
+  /(linkedin|instagram|github).{0,24}(ne|nedir|adresi|hesab[ıi]|link|url)/,
+  /(ne|nedir).{0,24}(linkedin|instagram|github)/,
 ];
 
 const START_CONTACT: RegExp[] = [
-  /ulaşmak istiyorum/i,
-  /nasıl ulaş/i,
-  /ulaşabilir miyim/i,
-  /iletişime geç/i,
-  /iletişim kur/i,
-  /iletişim bilg/i,
-  /mesaj bırak/i,
-  /mesaj ilet/i,
-  /haber bırak/i,
-  /ona yazmak/i,
-  /sizinle iletiş/i,
-  /(mail|e-?posta)\s*(atmak|göndermek|yazmak|bırakmak)/i,
-  /(mail|e-?posta)\s+(at|gönder|yaz|bırak)\b/i,
-  /teklif(im)? var/i,
-  /iş teklifi (bırak|gönder|yaz|ilet)/i,
-  /freelance.{0,40}(yaz|ulaş|iletişim|contact)/i,
-  /get in touch/i,
-  /reach out/i,
-  /leave a message/i,
-  /leave him a message/i,
-  /want to contact/i,
-  /how (?:can|do) i contact/i,
-  /contact (?:him|burak|you)/i,
-  /write to (?:him|burak)/i,
-  /send (?:him )?(?:a )?message/i,
+  /ulaş(?:mak|abilir|ayım|alım)?/,
+  /nasıl ulaş/,
+  /ulaşmak istiyorum/,
+  /ulaşabilir miyim/,
+  /buraka\s+(yaz|ulaş|mail|mesaj|e-?posta)/,
+  /ona\s+(yaz|ulaş|mail)/,
+  /kendisine\s+(yaz|ulaş)/,
+  /\biletişim\b/,
+  /iletişime geç/,
+  /iletişim kur/,
+  /iletişim bilg/,
+  /mesaj bırak/,
+  /mesaj ilet/,
+  /haber bırak/,
+  /ona yazmak/,
+  /sizinle iletiş/,
+  /birlikte çalışmak/,
+  /(mail|e-?posta|mesaj)\s*(atmak|göndermek|yazmak|bırakmak)/,
+  /(mail|e-?posta|mesaj)\s*(at|gönder|yaz|bırak)\b/,
+  /teklif(im)? var/,
+  /iş teklifi (bırak|gönder|yaz|ilet)/,
+  /freelance.{0,40}(yaz|ulaş|iletişim|contact)/,
+  /\bcontact\b/,
+  /get in touch/,
+  /reach out/,
+  /leave a message/,
+  /leave him a message/,
+  /want to contact/,
+  /how (?:can|do) i (?:contact|reach)/,
+  /write to (?:him|burak)/,
+  /send (?:him )?(?:a )?(?:message|mail|email)/,
 ];
 
 const CANCEL: RegExp[] = [
-  /^(vazgeç|iptal|boşver|iptal et|cancel|never mind|nevermind|forget it|stop)\b/i,
+  /^(vazgeç|iptal|boşver|iptal et|cancel|never mind|nevermind|forget it|stop)\b/,
 ];
 
 const CONFIRM_YES: RegExp[] = [
-  /^(evet|tamam|olur|onayla|gönder|ilet|yes|ok|okay|sure|send|confirm)\b/i,
+  /^(evet|tamam|olur|onayla|gönder|ilet|yes|ok|okay|sure|send|confirm)\b/,
 ];
 
 const CONFIRM_NO: RegExp[] = [
-  /^(hayır|düzelt|değiştir|yeniden|no|nope|change|edit|retry)\b/i,
+  /^(hayır|düzelt|değiştir|yeniden|no|nope|change|edit|retry)\b/,
 ];
 
-const GREETING_PREFIX = /^(merhaba|selam|selamlar|hello|hi|hey)[!,.\s]*/i;
+const GREETING_PREFIX = /^(merhaba|selam|selamlar|hello|hi|hey)[!,.\s]*/;
 
 export function detectLocale(text: string): ContactLocale {
   if (/[çğıöşüÇĞİÖŞÜ]/.test(text)) {
@@ -68,43 +82,80 @@ export function detectLocale(text: string): ContactLocale {
 }
 
 export function isAddressQuestion(text: string): boolean {
-  return ASK_ADDRESS_ONLY.some((pattern) => pattern.test(text));
+  return ASK_ADDRESS_ONLY.some((pattern) => pattern.test(normalizeForIntent(text)));
 }
 
 export function isContactIntent(text: string): boolean {
-  if (isAddressQuestion(text)) {
+  const normalized = normalizeForIntent(text);
+  if (!START_CONTACT.some((pattern) => pattern.test(normalized))) {
     return false;
   }
 
-  return START_CONTACT.some((pattern) => pattern.test(text));
+  if (isAddressQuestion(text) && !/\b(gönder|göndermek|atmak|ulaş|ulaşmak|bırak|bırakmak|ilet|yazmak|contact|reach)\b/.test(normalized)) {
+    return false;
+  }
+
+  return true;
 }
 
 export function isCancelContact(text: string): boolean {
-  return CANCEL.some((pattern) => pattern.test(text.trim()));
+  return CANCEL.some((pattern) => pattern.test(normalizeForIntent(text)));
 }
 
 export function isConfirmYes(text: string): boolean {
-  return CONFIRM_YES.some((pattern) => pattern.test(text.trim()));
+  return CONFIRM_YES.some((pattern) => pattern.test(normalizeForIntent(text)));
 }
 
 export function isConfirmNo(text: string): boolean {
-  return CONFIRM_NO.some((pattern) => pattern.test(text.trim()));
+  return CONFIRM_NO.some((pattern) => pattern.test(normalizeForIntent(text)));
+}
+
+const NAME_STOP_WORDS = new Set([
+  'want',
+  'to',
+  'the',
+  'him',
+  'burak',
+  'please',
+  'i',
+  'ı',
+  'a',
+  'for',
+  'icin',
+  'için',
+]);
+
+export function looksLikeName(text: string): boolean {
+  const words = normalizeForIntent(text).split(' ').filter(Boolean);
+  return (
+    words.length >= 2 &&
+    words.length <= 4 &&
+    words.every((word) => /^[\p{L}.'-]+$/u.test(word) && !NAME_STOP_WORDS.has(word))
+  );
 }
 
 export function stripContactIntentPhrases(message: string): string {
-  return message
+  return normalizeForIntent(message)
     .replace(GREETING_PREFIX, '')
-    .replace(/burak'?a\s+/gi, ' ')
-    .replace(/nasıl ulaşabilirim/gi, ' ')
-    .replace(/ulaşmak istiyorum/gi, ' ')
-    .replace(/ulaşabilir miyim/gi, ' ')
-    .replace(/iletişime geçmek istiyorum/gi, ' ')
-    .replace(/iletişim bilgileri(niz)?/gi, ' ')
-    .replace(/mesaj bırakmak istiyorum/gi, ' ')
-    .replace(/get in touch/gi, ' ')
-    .replace(/how (?:can|do) i contact(?: him| burak)?/gi, ' ')
-    .replace(/i want to contact(?: him| burak)?/gi, ' ')
-    .replace(/leave a message/gi, ' ')
+    .replace(/buraka\s+/g, ' ')
+    .replace(/nasıl ulaşabilirim/g, ' ')
+    .replace(/nasıl ulaş/g, ' ')
+    .replace(/ulaşmak istiyorum/g, ' ')
+    .replace(/ulaşabilir miyim/g, ' ')
+    .replace(/ulaş(?:mak|abilir|ayım|alım)?/g, ' ')
+    .replace(/\b(istiyorum|isterim|lütfen|please)\b/g, ' ')
+    .replace(/iletişime geçmek istiyorum/g, ' ')
+    .replace(/iletişim bilgileri(niz)?/g, ' ')
+    .replace(/\biletişim\b/g, ' ')
+    .replace(/birlikte çalışmak için/g, ' ')
+    .replace(/mesaj bırakmak istiyorum/g, ' ')
+    .replace(/(mail|e-?posta|mesaj)\s*(atmak|göndermek|yazmak|bırakmak)/g, ' ')
+    .replace(/(mail|e-?posta|mesaj)\s*(at|gönder|yaz|bırak)\b/g, ' ')
+    .replace(/\bcontact\b/g, ' ')
+    .replace(/get in touch/g, ' ')
+    .replace(/how (?:can|do) i (?:contact|reach)(?: him| burak)?/g, ' ')
+    .replace(/i want to contact(?: him| burak)?/g, ' ')
+    .replace(/leave a message/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

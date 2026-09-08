@@ -21,6 +21,26 @@ export class ContactRepository {
       data: { emailSent: true },
     });
   }
+
+  async countSince(since: Date, filter: { ipAddress?: string | null; email?: string } = {}): Promise<number> {
+    return prisma.contactMessage.count({
+      where: {
+        createdAt: { gte: since },
+        ...(filter.ipAddress !== undefined ? { ipAddress: filter.ipAddress } : {}),
+        ...(filter.email ? { email: filter.email } : {}),
+      },
+    });
+  }
+
+  async lastCreatedAtByIp(ipAddress: string | null): Promise<Date | null> {
+    const latest = await prisma.contactMessage.findFirst({
+      where: { ipAddress },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+
+    return latest?.createdAt ?? null;
+  }
 }
 
 export const contactRepository = new ContactRepository();

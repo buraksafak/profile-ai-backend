@@ -7,6 +7,7 @@ import {
   isConfirmNo,
   isConfirmYes,
   isContactIntent,
+  looksLikeName,
   stripContactIntentPhrases,
 } from '../utils/contact-intent';
 import { neutralizeDelimiters } from '../utils/prompt-guard';
@@ -20,8 +21,13 @@ import type {
 import { mailService } from './mail.service';
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
-const SEND_WINDOW_MS = 60 * 60 * 1000;
-const MAX_SENDS_PER_WINDOW = 3;
+const SEND_COOLDOWN_MS = 15 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_SENDS_PER_IP_DAY = 3;
+const MAX_SENDS_PER_EMAIL_DAY = 2;
+const MAX_SENDS_GLOBAL_DAY = 20;
+
+type RateLimitReason = 'cooldown' | 'ip' | 'email' | 'global';
 
 const nameSchema = z
   .string()
@@ -43,11 +49,6 @@ interface ContactSession {
   ipAddress: string | null;
   userAgent: string | null;
   updatedAt: number;
-}
-
-interface SendWindow {
-  count: number;
-  startedAt: number;
 }
 
 const COPY = {
@@ -74,7 +75,10 @@ const COPY = {
     failed: 'Şu an iletemedim. LinkedIn üzerinden de yazabilirsin: https://www.linkedin.com/in/buraksafak/',
     cancelled: 'Tamam, vazgeçtim. Başka bir şey sormak istersen buradayım.',
     restart: 'Tamam, baştan alalım. Adın ve soyadın nedir?',
-    rateLimited: 'Kısa sürede fazla mesaj denendi. Biraz sonra tekrar dener misin?',
+    rateLimitedCooldown: 'Az önce bir mesaj ilettim. Yenisini 15 dakika sonra bırakabilirsin.',
+    rateLimitedIp: 'Bu cihazdan bugünlük mesaj sınırına ulaşıldı. Yarın tekrar dener misin?',
+    rateLimitedEmail: 'Bu e-posta ile bugün zaten mesaj bırakıldı. Yarın tekrar dener misin?',
+    rateLimitedGlobal: 'Bugün çok fazla mesaj geldi. Lütfen yarın tekrar dene.',
     confirmHint: 'Göndermek için evet, düzeltmek için hayır, vazgeçmek için vazgeç yazman yeterli.',
   },
   en: {
@@ -101,14 +105,17 @@ const COPY = {
       'I could not send it right now. You can also reach him on LinkedIn: https://www.linkedin.com/in/buraksafak/',
     cancelled: 'Okay, I cancelled it. Ask me anything else if you want.',
     restart: 'Okay, let’s start over. What is your full name?',
-    rateLimited: 'Too many messages in a short time. Please try again later.',
+    rateLimitedCooldown: 'I just sent a message. You can leave another one in 15 minutes.',
+    rateLimitedIp: 'This device reached today’s message limit. Please try again tomorrow.',
+    rateLimitedEmail: 'This email already left a message today. Please try again tomorrow.',
+    rateLimitedGlobal: 'Too many messages arrived today. Please try again tomorrow.',
     confirmHint: 'Say yes to send, no to start over, or cancel to stop.',
   },
 } as const;
 
 export class ContactService {
   private readonly sessions = new Map<string, ContactSession>();
-  private readonly sendWindows = new Map<string, SendWindow>();
+  private readonly sendingIps = new Set<string>();
 
   async handle(input: ContactHandleInput): Promise<ContactHandleResult> {
     const message = neutralizeDelimiters(input.message).trim();
@@ -129,6 +136,14 @@ export class ContactService {
     }
 
     const locale = detectLocale(message);
+    const blocked = await this.checkSendLimit({
+      ipAddress: input.ipAddress,
+      locale,
+    });
+    if (blocked) {
+      return { handled: true, reply: blocked, submitted: false };
+    }
+
     const leftover = stripContactIntentPhrases(message);
     const session: ContactSession = {
       step: 'name',
@@ -140,7 +155,7 @@ export class ContactService {
     };
     this.sessions.set(key, session);
 
-    if (leftover.length >= 2 && leftover !== message) {
+    if (looksLikeName(leftover)) {
       return this.continueSession(key, session, leftover);
     }
 
@@ -179,7 +194,19 @@ export class ContactService {
       if (!parsed.success) {
         return { handled: true, reply: copy.invalidEmail, submitted: false };
       }
-      session.draft.email = parsed.data.toLowerCase();
+
+      const email = parsed.data.toLowerCase();
+      const blocked = await this.checkSendLimit({
+        ipAddress: session.ipAddress,
+        email,
+        locale: session.locale,
+      });
+      if (blocked) {
+        this.sessions.delete(key);
+        return { handled: true, reply: blocked, submitted: false };
+      }
+
+      session.draft.email = email;
       session.step = 'subject';
       return { handled: true, reply: copy.askSubject, submitted: false };
     }
@@ -222,15 +249,26 @@ export class ContactService {
       return { handled: true, reply: copy.confirmHint, submitted: false };
     }
 
-    if (!this.canSend(key)) {
-      this.sessions.delete(key);
-      return { handled: true, reply: copy.rateLimited, submitted: false };
+    const draft = this.requireDraft(session.draft);
+    const ipLock = session.ipAddress ?? 'unknown';
+    if (this.sendingIps.has(ipLock)) {
+      return { handled: true, reply: copy.rateLimitedCooldown, submitted: false };
     }
 
-    const draft = this.requireDraft(session.draft);
-    this.sessions.delete(key);
-
+    this.sendingIps.add(ipLock);
     try {
+      const blocked = await this.checkSendLimit({
+        ipAddress: session.ipAddress,
+        email: draft.email,
+        locale: session.locale,
+      });
+      if (blocked) {
+        this.sessions.delete(key);
+        return { handled: true, reply: blocked, submitted: false };
+      }
+
+      this.sessions.delete(key);
+
       const saved = await contactRepository.create({
         ...draft,
         ipAddress: session.ipAddress,
@@ -240,16 +278,16 @@ export class ContactService {
       const mail = await mailService.sendContactMessage(draft);
       if (mail.sent) {
         await contactRepository.markEmailSent(saved.id);
-        this.recordSend(key);
         return { handled: true, reply: copy.sent, submitted: true };
       }
 
-      this.recordSend(key);
       logger.warn({ contactId: saved.id, error: mail.error }, 'Contact saved without email');
       return { handled: true, reply: copy.saved, submitted: true };
     } catch (error: unknown) {
       logger.error({ err: error }, 'Failed to persist contact message');
       return { handled: true, reply: copy.failed, submitted: false };
+    } finally {
+      this.sendingIps.delete(ipLock);
     }
   }
 
@@ -274,24 +312,66 @@ export class ContactService {
     return `ip:${input.ipAddress ?? 'unknown'}|${(input.userAgent ?? '').slice(0, 80)}`;
   }
 
-  private canSend(key: string): boolean {
-    const window = this.sendWindows.get(key);
-    if (!window || Date.now() - window.startedAt > SEND_WINDOW_MS) {
-      return true;
+  private async checkSendLimit(input: {
+    ipAddress: string | null;
+    email?: string;
+    locale: ContactLocale;
+  }): Promise<string | null> {
+    const reason = await this.resolveRateLimit(input.ipAddress, input.email);
+    if (!reason) {
+      return null;
     }
 
-    return window.count < MAX_SENDS_PER_WINDOW;
+    return this.rateLimitReply(input.locale, reason);
   }
 
-  private recordSend(key: string): void {
+  private async resolveRateLimit(
+    ipAddress: string | null,
+    email?: string,
+  ): Promise<RateLimitReason | null> {
     const now = Date.now();
-    const window = this.sendWindows.get(key);
-    if (!window || now - window.startedAt > SEND_WINDOW_MS) {
-      this.sendWindows.set(key, { count: 1, startedAt: now });
-      return;
+    const sinceDay = new Date(now - DAY_MS);
+
+    const [globalCount, ipCount] = await Promise.all([
+      contactRepository.countSince(sinceDay),
+      contactRepository.countSince(sinceDay, { ipAddress }),
+    ]);
+
+    if (globalCount >= MAX_SENDS_GLOBAL_DAY) {
+      return 'global';
     }
 
-    window.count += 1;
+    if (ipCount >= MAX_SENDS_PER_IP_DAY) {
+      return 'ip';
+    }
+
+    const lastAt = await contactRepository.lastCreatedAtByIp(ipAddress);
+    if (lastAt && now - lastAt.getTime() < SEND_COOLDOWN_MS) {
+      return 'cooldown';
+    }
+
+    if (email) {
+      const emailCount = await contactRepository.countSince(sinceDay, { email });
+      if (emailCount >= MAX_SENDS_PER_EMAIL_DAY) {
+        return 'email';
+      }
+    }
+
+    return null;
+  }
+
+  private rateLimitReply(locale: ContactLocale, reason: RateLimitReason): string {
+    const copy = COPY[locale];
+    switch (reason) {
+      case 'cooldown':
+        return copy.rateLimitedCooldown;
+      case 'email':
+        return copy.rateLimitedEmail;
+      case 'global':
+        return copy.rateLimitedGlobal;
+      default:
+        return copy.rateLimitedIp;
+    }
   }
 
   private pruneExpired(): void {
@@ -299,12 +379,6 @@ export class ContactService {
     for (const [key, session] of this.sessions) {
       if (now - session.updatedAt > SESSION_TTL_MS) {
         this.sessions.delete(key);
-      }
-    }
-
-    for (const [key, window] of this.sendWindows) {
-      if (now - window.startedAt > SEND_WINDOW_MS) {
-        this.sendWindows.delete(key);
       }
     }
   }

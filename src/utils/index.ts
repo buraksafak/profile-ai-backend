@@ -15,6 +15,7 @@ export {
   isConfirmNo,
   isConfirmYes,
   isContactIntent,
+  looksLikeName,
   stripContactIntentPhrases,
 } from './contact-intent';
 export {

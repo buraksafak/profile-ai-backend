@@ -85,5 +85,7 @@ model ContactMessage {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([email, createdAt])
   @@map("contact_messages")
 }
