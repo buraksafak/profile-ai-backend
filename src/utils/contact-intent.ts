@@ -57,7 +57,13 @@ const CANCEL: RegExp[] = [
 ];
 
 const CONFIRM_YES: RegExp[] = [
-  /^(evet|tamam|olur|onayla|gönder|ilet|yes|ok|okay|sure|send|confirm)\b/,
+  /^(evet|tamam|olur|olur atalım|isterim|istiyorum|onayla|gönder|ilet|yes|ok|okay|sure|send|confirm)\b/,
+];
+
+const ALREADY_WANTS_EMAIL: RegExp[] = [
+  /(mail|e-?posta|mesaj)\s*(at|gönder|yaz|bırak|atmak|göndermek)/,
+  /leave a message/,
+  /send (?:him )?(?:a )?(?:message|mail|email)/,
 ];
 
 const CONFIRM_NO: RegExp[] = [
@@ -104,6 +110,10 @@ export function isCancelContact(text: string): boolean {
 
 export function isConfirmYes(text: string): boolean {
   return CONFIRM_YES.some((pattern) => pattern.test(normalizeForIntent(text)));
+}
+
+export function alreadyWantsEmail(text: string): boolean {
+  return ALREADY_WANTS_EMAIL.some((pattern) => pattern.test(normalizeForIntent(text)));
 }
 
 export function isConfirmNo(text: string): boolean {

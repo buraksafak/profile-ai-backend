@@ -2,13 +2,12 @@ import { z } from 'zod';
 import { contactRepository } from '../repositories/contact.repository';
 import { logger } from '../utils/logger';
 import {
+  alreadyWantsEmail,
   detectLocale,
   isCancelContact,
   isConfirmNo,
   isConfirmYes,
   isContactIntent,
-  looksLikeName,
-  stripContactIntentPhrases,
 } from '../utils/contact-intent';
 import { neutralizeDelimiters } from '../utils/prompt-guard';
 import type {
@@ -53,63 +52,44 @@ interface ContactSession {
 
 const COPY = {
   tr: {
-    askName: 'Tabii, mesajını Burak’a ileteyim. Adın ve soyadın nedir?',
-    askEmail: 'Dönüş için e-posta adresin nedir?',
-    askSubject: 'Kısa bir başlık yazar mısın? Örneğin iş teklifi, freelance proje veya soru.',
-    askBody: 'Konuyu biraz açar mısın? Ne üzerine yazmak istiyorsun?',
+    askConsent: 'Burak’a sohbetten mail bırakabilirsin. Mail atmak ister misin?',
+    consentHint: 'Mail atmak için evet, vazgeçmek için hayır yazman yeterli.',
+    askName: 'Tamam. Adın ve soyadın nedir?',
+    askEmail: 'Tamam. Dönüş için e-posta adresin nedir?',
+    askSubject: 'Tamam. Kısa bir başlık yazar mısın? Örneğin iş teklifi, freelance proje veya soru.',
+    askBody: 'Tamam. Konuyu biraz açar mısın?',
     invalidName: 'Adı soyadı biraz daha net yazar mısın?',
     invalidEmail: 'Geçerli bir e-posta adresi yazar mısın? Burak böylece sana dönüş yapabilir.',
     invalidSubject: 'Başlık çok kısa kaldı. Birkaç kelimeyle yazar mısın?',
     invalidBody: 'Konuyu biraz daha açar mısın? En az birkaç cümle yeterli.',
-    confirm: (draft: Required<ContactDraft>) =>
-      [
-        'Şunu ileteceğim:',
-        `Ad: ${draft.name}`,
-        `E-posta: ${draft.email}`,
-        `Başlık: ${draft.subject}`,
-        `Konu: ${draft.body}`,
-        'Göndereyim mi? Evet dersen iletirim, hayır dersen baştan alırız. Vazgeç dersen iptal ederim.',
-      ].join('\n'),
-    sent: 'İlettim. Burak genelde 1–2 iş günü içinde dönüş yapar.',
-    saved: 'Mesajını kaydettim. Burak onu görecek ve 1–2 iş günü içinde dönüş yapacak.',
-    failed: 'Şu an iletemedim. LinkedIn üzerinden de yazabilirsin: https://www.linkedin.com/in/buraksafak/',
-    cancelled: 'Tamam, vazgeçtim. Başka bir şey sormak istersen buradayım.',
-    restart: 'Tamam, baştan alalım. Adın ve soyadın nedir?',
+    sent: 'Mailini ilettim. Burak genelde 1–2 iş günü içinde dönüş yapar.',
+    notConfigured: 'Mail servisi şu an tanımlı değil. LinkedIn üzerinden yazabilirsin: https://www.linkedin.com/in/buraksafak/',
+    failed: 'Maili şu an gönderemedim. LinkedIn üzerinden de yazabilirsin: https://www.linkedin.com/in/buraksafak/',
+    cancelled: 'Tamam, mail bırakmadım. Başka bir şey sormak istersen buradayım.',
     rateLimitedCooldown: 'Az önce bir mesaj ilettim. Yenisini 15 dakika sonra bırakabilirsin.',
     rateLimitedIp: 'Bu cihazdan bugünlük mesaj sınırına ulaşıldı. Yarın tekrar dener misin?',
     rateLimitedEmail: 'Bu e-posta ile bugün zaten mesaj bırakıldı. Yarın tekrar dener misin?',
     rateLimitedGlobal: 'Bugün çok fazla mesaj geldi. Lütfen yarın tekrar dene.',
-    confirmHint: 'Göndermek için evet, düzeltmek için hayır, vazgeçmek için vazgeç yazman yeterli.',
   },
   en: {
-    askName: 'Sure, I can pass your note to Burak. What is your full name?',
-    askEmail: 'What email should he use to reply?',
-    askSubject: 'Please share a short title. For example job offer, freelance project, or a question.',
-    askBody: 'Tell me a bit more. What would you like to write about?',
+    askConsent: 'You can leave Burak an email from this chat. Would you like to send one?',
+    consentHint: 'Say yes to send an email, or no to cancel.',
+    askName: 'Okay. What is your full name?',
+    askEmail: 'Okay. What email should he use to reply?',
+    askSubject: 'Okay. Please share a short title. For example job offer, freelance project, or a question.',
+    askBody: 'Okay. Tell me a bit more about the topic.',
     invalidName: 'Please write your name a little more clearly.',
     invalidEmail: 'Please share a valid email so Burak can reply.',
     invalidSubject: 'That title is too short. A few words are enough.',
     invalidBody: 'Please add a bit more detail. A few sentences are enough.',
-    confirm: (draft: Required<ContactDraft>) =>
-      [
-        'I will send this:',
-        `Name: ${draft.name}`,
-        `Email: ${draft.email}`,
-        `Title: ${draft.subject}`,
-        `Message: ${draft.body}`,
-        'Should I send it? Say yes to send, no to start over, or cancel to stop.',
-      ].join('\n'),
-    sent: 'Sent. Burak usually replies in 1–2 business days.',
-    saved: 'I saved your message. Burak will see it and usually replies in 1–2 business days.',
-    failed:
-      'I could not send it right now. You can also reach him on LinkedIn: https://www.linkedin.com/in/buraksafak/',
-    cancelled: 'Okay, I cancelled it. Ask me anything else if you want.',
-    restart: 'Okay, let’s start over. What is your full name?',
+    sent: 'I sent your email. Burak usually replies in 1–2 business days.',
+    notConfigured: 'Email is not configured right now. You can also write on LinkedIn: https://www.linkedin.com/in/buraksafak/',
+    failed: 'I could not send the email right now. You can also reach him on LinkedIn: https://www.linkedin.com/in/buraksafak/',
+    cancelled: 'Okay, I did not send an email. Ask me anything else if you want.',
     rateLimitedCooldown: 'I just sent a message. You can leave another one in 15 minutes.',
     rateLimitedIp: 'This device reached today’s message limit. Please try again tomorrow.',
     rateLimitedEmail: 'This email already left a message today. Please try again tomorrow.',
     rateLimitedGlobal: 'Too many messages arrived today. Please try again tomorrow.',
-    confirmHint: 'Say yes to send, no to start over, or cancel to stop.',
   },
 } as const;
 
@@ -144,9 +124,8 @@ export class ContactService {
       return { handled: true, reply: blocked, submitted: false };
     }
 
-    const leftover = stripContactIntentPhrases(message);
     const session: ContactSession = {
-      step: 'name',
+      step: 'consent',
       draft: {},
       locale,
       ipAddress: input.ipAddress,
@@ -155,11 +134,12 @@ export class ContactService {
     };
     this.sessions.set(key, session);
 
-    if (looksLikeName(leftover)) {
-      return this.continueSession(key, session, leftover);
+    if (alreadyWantsEmail(message) || isConfirmYes(message)) {
+      session.step = 'name';
+      return { handled: true, reply: COPY[locale].askName, submitted: false };
     }
 
-    return { handled: true, reply: COPY[locale].askName, submitted: false };
+    return { handled: true, reply: COPY[locale].askConsent, submitted: false };
   }
 
   private async continueSession(
@@ -175,8 +155,16 @@ export class ContactService {
       return { handled: true, reply: copy.cancelled, submitted: false };
     }
 
-    if (session.step === 'confirm') {
-      return this.handleConfirm(key, session, message);
+    if (session.step === 'consent') {
+      if (isConfirmNo(message)) {
+        this.sessions.delete(key);
+        return { handled: true, reply: copy.cancelled, submitted: false };
+      }
+      if (!isConfirmYes(message) && !alreadyWantsEmail(message)) {
+        return { handled: true, reply: copy.consentHint, submitted: false };
+      }
+      session.step = 'name';
+      return { handled: true, reply: copy.askName, submitted: false };
     }
 
     if (session.step === 'name') {
@@ -226,29 +214,15 @@ export class ContactService {
       return { handled: true, reply: copy.invalidBody, submitted: false };
     }
     session.draft.body = parsed.data;
-    session.step = 'confirm';
 
-    const draft = this.requireDraft(session.draft);
-    return { handled: true, reply: copy.confirm(draft), submitted: false };
+    return this.submitDraft(key, session);
   }
 
-  private async handleConfirm(
+  private async submitDraft(
     key: string,
     session: ContactSession,
-    message: string,
   ): Promise<ContactHandleResult> {
     const copy = COPY[session.locale];
-
-    if (isConfirmNo(message)) {
-      session.step = 'name';
-      session.draft = {};
-      return { handled: true, reply: copy.restart, submitted: false };
-    }
-
-    if (!isConfirmYes(message)) {
-      return { handled: true, reply: copy.confirmHint, submitted: false };
-    }
-
     const draft = this.requireDraft(session.draft);
     const ipLock = session.ipAddress ?? 'unknown';
     if (this.sendingIps.has(ipLock)) {
@@ -275,6 +249,11 @@ export class ContactService {
         userAgent: session.userAgent,
       });
 
+      if (!mailService.isConfigured()) {
+        logger.warn({ contactId: saved.id }, 'Contact saved but Resend is not configured');
+        return { handled: true, reply: copy.notConfigured, submitted: false };
+      }
+
       const mail = await mailService.sendContactMessage(draft);
       if (mail.sent) {
         await contactRepository.markEmailSent(saved.id);
@@ -282,7 +261,7 @@ export class ContactService {
       }
 
       logger.warn({ contactId: saved.id, error: mail.error }, 'Contact saved without email');
-      return { handled: true, reply: copy.saved, submitted: true };
+      return { handled: true, reply: copy.failed, submitted: false };
     } catch (error: unknown) {
       logger.error({ err: error }, 'Failed to persist contact message');
       return { handled: true, reply: copy.failed, submitted: false };

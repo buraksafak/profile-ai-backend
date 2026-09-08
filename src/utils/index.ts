@@ -13,6 +13,7 @@ export {
   isAddressQuestion,
   isCancelContact,
   isConfirmNo,
+  alreadyWantsEmail,
   isConfirmYes,
   isContactIntent,
   looksLikeName,

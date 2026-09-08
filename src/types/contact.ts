@@ -1,6 +1,6 @@
 export type ContactLocale = 'tr' | 'en';
 
-export type ContactStep = 'name' | 'email' | 'subject' | 'body' | 'confirm';
+export type ContactStep = 'consent' | 'name' | 'email' | 'subject' | 'body';
 
 export interface ContactDraft {
   name?: string;
